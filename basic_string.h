@@ -299,6 +299,7 @@ namespace tinySTL {
 		basic_string& append(const_pointer s)
 		{
 
+
 		}
 		
 		// reallocate
