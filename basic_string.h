@@ -244,6 +244,46 @@ namespace tinySTL {
 
 		}
 
+	public:
+
+		// append 重载
+		basic_string& append(size_type cnt, value_type ch)
+		{
+			assert(max_size() > size_ + cnt);
+			auto pos = buffer_ + size_;
+			if (pos + cnt > cap_)
+			{
+				reallocate(cnt); // 重新分配空间，注意这个和C中的realloc实现不一样
+			}
+			while (cnt--)
+			{
+				*pos++ = ch;
+			}
+			return *this;
+		}
+
+		basic_string& append(const_pointer s, size_type cnt)
+		{
+			assert(max_size() > size_ + cnt);
+			auto pos = buffer_ + size_;
+			if(size_ + cnt > cap_)
+			{
+				reallocate(cnt);
+			}
+			char_traits::copy(pos, s, cnt);
+			size_ += cnt;
+			return *this;
+		}
+
+		basic_string& append(const_pointer s)
+		{
+			return append(s, char_traits::length(s));
+		}
+
+		size_type max_size() const noexcept
+		{
+			return static_cast<size_type>(-1);
+		}
 
 	private:
 		// helper func
@@ -281,31 +321,33 @@ namespace tinySTL {
 				append(*first++);
 			}
 		}
-
-		// append 重载
-		basic_string& append(size_type cnt, value_type ch)
-		{
-			auto pos = buffer_ + size_;
-			if (pos + cnt > cap_)
-			{
-				reallocate(cnt); // 重新分配空间，注意这个和C中的realloc实现不一样
-			}
-			while (cnt--)
-			{
-				*pos++ = ch;
-			}
-		}
-
-		basic_string& append(const_pointer s)
-		{
-
-
-		}
 		
 		// reallocate
 		void reallocate(size_type need)
 		{
+			const auto new_cap = tinySTL::max(cap_ + need, cap_ + cap_ >> 1);
+			auto new_buffer = data_allocator::allocate(new_cap);
+			char_traits::move(new_buffer, buffer_, size_);
+			data_allocator::deallocate(buffer_);
+			buffer_ = new_buffer;
+			cap_ = new_cap;
+		}
 
+		typename iterator reallocate_and_fill(iterator pos, size_type n, value_type ch)
+		{
+			const auto residue = pos - buffer_;
+			const auto old_cap = cap_;
+			const auto new_cap = tinySTL::max(cap_ + n, cap_ + cap_ >> 1);
+			auto new_buffer = data_allocator::allocate(new_cap);
+			// 重新分配内存并在原有的字符串中间插入n个ch字符
+			auto p1 = char_traits::move(new_buffer, buffer_, residue) + residue;
+			auto p2 = char_traits::fill(p1, ch, n) + n;
+			char_traits::move(p2, pos, size_ - residue);
+			data_allocator::deallocate(buffer_, old_cap);
+			buffer_ = new_buffer;
+			size_ += n;
+			cap_ = new_cap;
+			return buffer_ + residue;
 		}
 	};
 }
