@@ -10,6 +10,7 @@
 #include "memory.h"
 #include "functional.h"
 #include "allocator.h"
+#include "uninitialized.h"
 
 
 namespace tinySTL {
@@ -186,7 +187,7 @@ namespace tinySTL {
 
 	public:
 		// 基本的类成员函数。包括构造、析构、拷贝、移动、操作符重载等
-
+		// 构造
 		basic_string() noexcept
 		{
 			try
@@ -241,10 +242,195 @@ namespace tinySTL {
 			tinySTL::is_input_iterator<Iter>::value, int> = 0>
 		basic_string(Iter first, Iter last)
 		{
+			copy_init(first, last, tinySTL::iterator_category(first));
+		}
 
+		// 拷贝
+		basic_string(const basic_string& rhs)
+			:buffer_(nullptr), size_(0), cap_(0)
+		{
+			// 这里直接使用iterator类型的buffer_传入形参const_pointer其实并不准确
+			init_from(rhs.buffer_, 0, rhs.size_);
+		}
+
+		basic_string(basic_string&& rhs) noexcept
+			:buffer_(rhs.buffer_), size_(rhs.size_), cap_(rhs.cap_)
+		{
+			rhs.buffer_ = nullptr;
+			rhs.size_ = 0;
+			rhs.cap_ = 0;
+		}
+
+		// 析构
+		~basic_string() { destroy_buffer(); }
+
+	public:
+		// 操作符重载
+
+		basic_string& operator=(const basic_string& rhs)
+		{
+			if (&rhs != this)
+			{
+				basic_string tmp(rhs);
+				swap(tmp);
+			}
+			return *this;
+		}
+
+		basic_string& operator=(basic_string&& rhs) noexcept
+		{
+			destroy_buffer();
+			buffer_ = rhs.buffer_;
+			size_ = rhs.size_;
+			cap_ = rhs.cap_;
+			
+			rhs.buffer_ = nullptr;
+			rhs.size_ = 0;
+			rhs.cap_ = 0;
+			return *this;
+		}
+
+		basic_string& operator=(const_pointer str)
+		{
+			// 使用一个局部变量构造再交换
+			basic_string tmp(str);
+			swap(tmp);
+			return *this;
+		}
+
+		basic_string& operator=(value_type ch)
+		{
+			basic_string tmp(1, ch);
+			swap(tmp);
+			return *this;
 		}
 
 	public:
+
+		// 迭代器相关操作
+		iterator begin() noexcept
+		{
+			return buffer_;
+		}
+
+		const_iterator begin() const noexcept
+		{
+			return buffer_;
+		}
+
+		iterator end() noexcept
+		{
+			return buffer_ + size_;
+		}
+
+		const_iterator end() const noexcept
+		{
+			return buffer_ + size_;
+		}
+
+		reverse_iterator rbegin() noexcept
+		{
+			return reverse_iterator(end());
+		}
+
+		const_reverse_iterator rbegin() const noexcept
+		{
+			return const_reverse_iterator(end());
+		}
+
+		reverse_iterator rend() noexcept
+		{
+			return reverse_iterator(begin());
+		}
+
+		const_reverse_iterator rend() noexcept
+		{
+			return const_reverse_iterator(begin());
+		}
+
+		const_iterator cbegin() const noexcept
+		{
+			return begin();
+		}
+
+		const_iterator cend() const noexcept
+		{
+			return end();
+		}
+
+		const_reverse_iterator crbegin() const noexcept
+		{
+			return rbegin();
+		}
+
+		const_reverse_iterator crend()   const noexcept
+		{
+			return rend();
+		}
+
+	public:
+
+		// 容器相关操作
+		bool empty() const noexcept
+		{
+			return size_ == 0;
+		}
+
+		size_type size() const noexcept
+		{
+			return size_;
+		}
+
+		size_type length() const noexcept
+		{
+			return size_;
+		}
+
+		size_type capacity() const noexcept
+		{
+			return cap_;
+		}
+
+		size_type max_size() const noexcept
+		{
+			return static_cast<size_type>(-1);
+		}
+
+		void reserve(size_type cnt)
+		{
+			if (cap_ < cnt)
+			{
+				// 不使用reallocate的原因是reallocate会自己选择扩展空间
+				assert(cnt < max_size());
+				auto new_buffer = data_allocator::allocate(cnt);
+				char_traits::move(new_buffer, buffer_, size_);
+				data_allocator::deallocate(buffer_);
+				buffer_ = new_buffer;
+				cap_ = cnt;
+			}
+		}
+
+		void shrink_to_fit()
+		{
+			if (size_ != cap_)
+			{
+				reinsert(size_);
+			}
+		}
+
+		// insert
+		iterator insert(const_iterator pos, value_type ch)
+		{
+			auto p = const_cast<iterator>(pos);
+			if (size_ == cap_)
+			{
+				return reallocate_and_fill(p, 1, ch);
+			}
+			char_traits::move(p + 1, r, end() - p);
+			++size_;
+			*p = ch;
+			return p;
+		}
 
 		// append 重载
 		basic_string& append(size_type cnt, value_type ch)
@@ -280,9 +466,46 @@ namespace tinySTL {
 			return append(s, char_traits::length(s));
 		}
 
-		size_type max_size() const noexcept
+		basic_string& append(basic_string& str, size_type pos, size_type cnt)
 		{
-			return static_cast<size_type>(-1);
+			assert(size_ + cnt < max_size());
+			if (cnt == 0)
+				return *this;
+			if (size_ + cnt > cap_)
+			{
+				reallocate(cnt);
+			}
+			char_traits::copy(buffer_ + size_, str.buffer_ + pos, cnt);
+			size_ += cnt;
+			return *this;
+		}
+
+		basic_string& append(const basic_string& str)
+		{
+			return append(str, 0, str.size_);
+		}
+
+		basic_string& append(const basic_string& str, size_type pos)
+		{
+			return append(str, pos, str.size_ - pos);
+		}
+
+		template<typename Iter, typename tinySTL::enable_if_t<
+			tinySTL::is_input_iterator<Iter>::value, int> = 0>
+		basic_string& append(Iter first, Iter last)
+		{
+			return append_range(first, last);
+		}
+
+		// swap
+		void swap(basic_string& rhs) noexcept
+		{
+			if (this != &rhs)
+			{
+				tinySTL::swap(buffer_, rhs.buffer_);
+				tinySTL::swap(size_, rhs.size_);
+				tinySTL::swap(cap_, rhs.cap_);
+			}
 		}
 
 	private:
@@ -349,5 +572,121 @@ namespace tinySTL {
 			cap_ = new_cap;
 			return buffer_ + residue;
 		}
+
+		typename iterator reallocate_and_copy(iterator pos, const_iterator first, const_iterator last)
+		{
+			const auto residue = pos - buffer_;
+			const auto old_cap = cap_;
+			const auto distance = tinySTL::distance(first, last);
+			const auto new_cap = tinySTL::max(cap_ + distance, cap_ + cap_ >> 1);
+			auto new_buffer = data_allocator::allocate(new_cap);
+			// 类似于reallocate_and_fill
+			auto p1 = char_traits::move(new_buffer, buffer_, residue) + residue;
+			auto p2 = tinySTL::uninitialized_copy_n(first, distance, p1) + distance;
+			char_traits::move(p2, pos, size_ - residue);
+			data_allocator::deallocate(buffer_, old_cap);
+			buffer_ = new_buffer;
+			size_ += n;
+			cap_ = new_cap;
+			return buffer_ + residue;
+		}
+
+		// copy init
+		template<typename Iter>
+		void copy_init(Iter first, Iter last, tinySTL::input_iterator_tag)
+		{
+			const auto distance = tinySTL::distance(first, last);
+			const auto init_size = tinySTL::max(static_cast<size_type>(STRING_INIT_SIZE), distance + 1);
+			try
+			{
+				buffer_ = data_allocator::allocate(init_size);
+				size_ = distance;
+				cap_ init_size;
+			}
+			catch (...)
+			{
+				buffer_ = nullptr;
+				size_ = 0;
+				cap_ = 0;
+				throw;
+			}
+			while (distance--)
+			{
+				append(*first++);
+			}
+		}
+
+		template<typename Iter>
+		void copy_init(Iter first, Iter last, tinySTL::forward_iterator_tag)
+		{
+			const auto distance = tinySTL::distance(first, last);
+			const auto init_size = tinySTL::max(static_cast<size_type>(STRING_INIT_SIZE), distance + 1);
+			try
+			{
+				buffer_ = data_allocator::allocate(init_size);
+				size_ = distance;
+				cap_ init_size;
+				tinySTL::uninitialized_copy(first, last, buffer_);
+			}
+			catch (...)
+			{
+				buffer_ = nullptr;
+				size_ = 0;
+				cap_ = 0;
+				throw;
+			}
+		}
+
+		// append_range
+		template<typename Iter>
+		basic_string& append_range(Iter first, Iter last)
+		{
+			const auto distance = tinySTL::distance(first, last);
+			assert(distance + size_ < max_size());
+			if (size_ + distance > cap_)
+			{
+				reallocate(distance);
+			}
+			tinySTL::uninitialized_copy_n(first, distance, buffer_ + size_);
+			size_ += distance;
+			return *this;
+		}
+
+		// reinsert
+		void reinsert(size_type size)
+		{
+			auto new_buffer = data_allocator::allocate(size);
+			try
+			{
+				char_traits::move(new_buffer, buffer_, size);
+			}
+			catch (...)
+			{
+				data_allocator::deallocate(new_buffer);
+			}
+			data_allocator::deallocate(buffer_);
+			buffer_ = new_buffer;
+			size_ = size;
+			cap_ = size;
+		}
+
+		// destory
+		void destroy_buffer()
+		{
+			if (buffer_)
+			{
+				data_allocator::deallocate(buffer_, cap_);
+				buffer_ = nullptr;
+				size_ = 0;
+				cap_ = 0;
+			}
+		}
 	};
+
+	// 重载全局的swap
+	template<typename CharType, typename CharTraits>
+	void swap(basic_string<CharType, CharTraits>& lhs, basic_string<CharType, CharTraits>& rhs)
+	{
+		lhs.swap(rhs);
+	}
 }

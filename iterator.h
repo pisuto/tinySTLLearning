@@ -109,7 +109,7 @@ namespace tinySTL {
 	// 返回某个迭代器的类别Category
 	template<typename Iterator>
 	typename iterator_traits<Iterator>::iterator_category
-		iterator_category(const Iterator&) {
+	iterator_category(const Iterator&) {
 		using Category = typename iterator_traits<Iterator>::iterator_category;
 		return Category();
 	}
@@ -117,7 +117,7 @@ namespace tinySTL {
 	/// fix ... （返回类型指针有助于判断类型）
 	template <typename Iterator>
 	typename iterator_traits<Iterator>::value_type*
-		value_type(const Iterator&) {
+	value_type(const Iterator&) {
 		return static_cast<typename iterator_traits<Iterator>::value_type*>(0);
 	}
 
