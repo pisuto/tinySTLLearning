@@ -271,7 +271,7 @@ namespace tmpl
     using append = typename type_append<
         type_elem<int_type<3>, type_elem<int_type<2>, null_type>>,
         type_elem<int_type<1>, type_elem<int_type<2>, null_type>>>::result;
-    // 切记不能忘记result
+    // 鍒囪涓嶈兘蹇樿result
     // using filter = typename type_filter<list, int_type<2>, type_greater>::result;
     using quick_sort = typename type_quick_sort<list>::result;
 
