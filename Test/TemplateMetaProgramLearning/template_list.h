@@ -63,7 +63,7 @@ namespace tmpl
     template<typename TL, typename V>
     struct type_is_included
     {
-        using result = typename is_valid<typename type_at<TL, V>::result>::result;
+        using result = typename type_is_valid<typename type_at<TL, V>::result>::result;
     };
 
     template<typename TL, typename V>

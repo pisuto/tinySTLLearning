@@ -49,13 +49,13 @@ namespace tmpl
     };
 
     template<typename T>
-    struct is_valid
+    struct type_is_valid
     {
         using result = true_result;
     };
 
     template<>
-    struct is_valid<null_type>
+    struct type_is_valid<null_type>
     {
         using result = false_result;
     };
@@ -128,6 +128,6 @@ namespace tmpl
             typename type_negate<typename type_is_same<void*, D*>::result>::result>::result;
     public:
         using result = typename type_and<condition_not_same_type,
-            typename type_is_convertible<B, D>::result>::result;
+            typename type_is_convertible<B*, D*>::result>::result;
     };
 }
