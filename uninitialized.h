@@ -26,6 +26,7 @@ namespace tinySTL {
 			}
 		}
 		catch (...) {
+			/* 若构造失败就直接销毁已经构造的结构 */
 			for (; result != cur; ++result) {
 				tinySTL::destroy(&*result);
 			}
@@ -167,6 +168,7 @@ namespace tinySTL {
 			value_type>{});
 	}
 
+	// 把[first, last)上的内容移动到以 result 为起始处的空间，返回移动结束的位置
 	// uninitialize_move_n
 
 	template<typename InputIter, typename Size, typename ForwardIter>
@@ -185,17 +187,47 @@ namespace tinySTL {
 			}
 		}
 		catch (...) {
-			for (; result != cur; ++result) {
-				tinySTL::destroy(&*result);
-			}
+			tinySTL::destroy(result, cur);
 		}
 		return cur;
 	}
 
-	template <class InputIter, class Size, class ForwardIter>
+	template <typename InputIter, typename Size, typename ForwardIter>
 	ForwardIter uninitialized_move_n(InputIter first, Size n, ForwardIter result)
 	{
 		return tinySTL::unchecked_uninit_move_n(first, n, result,
+			std::is_trivially_move_assignable<
+			typename iterator_traits<InputIter>::
+			value_type>{});
+	}
+
+	// uninitialize_move
+	template<typename InputIter, typename ForwardIter>
+	ForwardIter uncheckd_uninit_move(InputIter first, InputIter last, ForwardIter result,
+		std::true_type) {
+		return tinySTL::move(first, last, result);
+	}
+
+	template<typename InputIter, typename ForwardIter>
+	ForwardIter uncheckd_uninit_move(InputIter first, InputIter last, ForwardIter result,
+		std::false_type) {
+		auto cur = result;
+		try {
+			for (; first != last; ++first, ++cur) {
+				tinySTL::construct(&*cur, tinySTL::move(*first));
+			}
+		}
+		catch (...)
+		{
+			tinySTL::destroy(result, cur);
+		}
+		return cur;
+	}
+
+	template <typename InputIter, typename ForwardIter>
+	ForwardIter uninitialized_move(InputIter first, InputIter last, ForwardIter result) 
+	{
+		return uncheckd_uninit_move(first, last, result,
 			std::is_trivially_move_assignable<
 			typename iterator_traits<InputIter>::
 			value_type>{});

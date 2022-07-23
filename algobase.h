@@ -60,9 +60,9 @@ namespace tinySTL {
 
 	// 为trivially_copy_assignable类型提供特化版本
 	template<typename Tp, typename Up>
-	typename ::std::enable_if<
-		::std::is_same<typename ::std::remove_const<Tp>::type, Up>::value&&
-		::std::is_trivially_copy_assignable<Up>::value
+	typename std::enable_if<
+		std::is_same<typename std::remove_const<Tp>::type, Up>::value &&
+		std::is_trivially_copy_assignable<Up>::value
 		, Up*>::type
 		unchecked_copy(Tp* first, Tp* last, Up* result) {
 		const auto n = static_cast<size_t>(last - first);

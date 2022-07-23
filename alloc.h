@@ -32,6 +32,10 @@ namespace tinySTL {
 
 	using MALLOCALLOCFUN = void(*)();
 
+	/*
+	 * 使用template<int inst>中的非型别参数inst可以获得一组不同的静态成员
+	 * reference to https://zhuanlan.zhihu.com/p/337711951
+	 */
 	template <int inst>
 	class MallocAllocTemplate {									  // 一级空间配置器
 	private:
@@ -91,11 +95,17 @@ namespace tinySTL {
 		static size_t heapSize;
 		static union FreeList* freeList[FREELISTS];
 
-		static size_t getFreeListIdx(size_t bytes) { // 得到这个字节对应在自由链表中应取的位置
+		static size_t getFreeListIdx(size_t bytes) { 
+			/* 得到这个字节对应在自由链表中应取的位置，从0开始 */
 			return (bytes + (size_t)ALIGN - 1) / (size_t)ALIGN - 1;
 		}
 
 		static size_t getRoundUp(size_t bytes) { // 对这个字节向上取成8的倍数
+			/* 
+			 * ~(ALIGN-1)表示11...1000，进行与操作等价于去掉被8除的余数，等价于
+			 * [(bytes+7)/8]*8，用位运算增加了效率
+			 * reference to https://www.zhihu.com/question/41043015
+			 */
 			return (bytes + (size_t)ALIGN - 1) & (~(ALIGN - 1));
 		}
 
@@ -122,19 +132,25 @@ namespace tinySTL {
 	template<bool threads, int inst>
 	void* DefaultAllocTemplate<threads, inst>::allocate(size_t n) {
 		void* ret;
-		if (MAXBytes < n) { // 大于_MAXBYTES个字节则认为是大块内存，直接调用一级空间配置器
+		// 大于_MAXBYTES个字节则认为是大块内存，直接调用一级空间配置器
+		if (MAXBytes < n) { 
 
 			ret = malloc_alloc::allocate(n);
 		}
 		else {
-
-			FreeList** nowLoc = freeList + getFreeListIdx(n); // 让myFreeList指向自由链表中n向上取8的整数倍的地址
+			// 让myFreeList指向自由链表中n向上取8的整数倍的地址
+			FreeList** nowLoc = freeList + getFreeListIdx(n);
 			FreeList* result = *nowLoc;
 			if (!result) {
+				/* 没有空间时进行分配 */
 				ret = reFill(getRoundUp(n));
 			}
 			else {
-				*nowLoc = result->next; // 将result->next覆盖链表上的地址，原地址给分配的对象使用和释放
+				/* 
+				 * 将result->next覆盖链表上的地址，即链表下移至next的地址，
+				 * 上个空间分配给对象使用和释放，从操作看类似FIFO。
+				 */
+				*nowLoc = result->next; 
 				ret = result;
 			}
 		}
@@ -156,6 +172,7 @@ namespace tinySTL {
 
 	template<bool threads, int inst>
 	void* DefaultAllocTemplate<threads, inst>::reFill(size_t n) {
+		/*  */
 		int objs = 20;
 		char* chunk = chunkAlloc(n, objs);    // 因为现在链表中没有，所以要想内存池中申请，多余的再挂到自由链表下面
 		if (1 == objs) // 如果可供分配的空间只有一个，则直接返回
@@ -179,29 +196,39 @@ namespace tinySTL {
 	template<bool threads, int inst>
 	char* DefaultAllocTemplate<threads, inst>::chunkAlloc(size_t size, int& objs) {
 		char* result = nullptr;
+		/* 这次分配需要的所有空间 */
 		size_t totalBytes = size * objs;
+		/* 内存池剩余空间 */
 		size_t leftBytes = endFree - startFree;
 		if (leftBytes >= totalBytes) {
+			/* 若空间完全足够，那么就直接移位返回 */
 			result = startFree;
 			startFree += totalBytes;
 			return  result;
 		}
 		else if (leftBytes > size) {
+			/* 若空间不能完全满足，那么就能分配多少就是多少，因为每次分配只会是size大小的区块内存 */
 			objs = (int)(leftBytes / size);
 			result = startFree;
 			startFree += objs * size;
 			return result;
 		}
 		else {
+			/* 一个区块的空闲内存都无法提供 */
 			size_t newBytes = 2 * totalBytes + getRoundUp(heapSize >> 4); // 右移一位除于2，移四位除于16
-			if (leftBytes > 0) {										  // 还剩余的空间加入到链表当中	
+			if (leftBytes > 0) {
+				/* 残存的一些空间加入到链表当中 */
 				FreeList** nowLoc = freeList + getFreeListIdx(leftBytes);
 				((FreeList*)startFree)->next = *nowLoc;
 				*nowLoc = (FreeList*)startFree;
 			}
 
 			startFree = (char*)std::malloc(newBytes);
-			if (!startFree) { // //如果开辟失败的话，则表明系统已经没有内存了，这时候我们就要到自由链表中找一块比n还大的内存块，如果还没有的话，那就掉一级空间配置器
+			if (!startFree) { 
+				/* 
+				 * 如果开辟失败的话，则表明系统已经没有内存了，这时候我们就要到自由链表
+				 * 中找一块比n还大的内存块，如果还没有的话，那就掉一级空间配置器 
+				 */
 				for (size_t i = size; i < (size_t)MAXBytes; i += (size_t)ALIGN) {
 					FreeList** nowLoc = freeList + getFreeListIdx(i);
 					FreeList* p = *nowLoc;
@@ -212,7 +239,7 @@ namespace tinySTL {
 						return chunkAlloc(size, objs);
 					}
 				}
-
+				/* 当到处都没有内存可以使用时，只能调用一级配置器分配空间 */
 				endFree = nullptr;
 				startFree = (char*)malloc_alloc::allocate(newBytes);
 			}
@@ -238,11 +265,11 @@ namespace tinySTL {
 			return (T*)(::operator new(sizeof(T)));
 		}
 
-		static void dellocate(T* buffer) {
+		static void deallocate(T* buffer) {
 			::operator delete (buffer);
 		}
 
-		static void dellocate(T* buffer, ptrdiff_t /* size */) {
+		static void deallocate(T* buffer, ptrdiff_t /* size */) {
 			::operator delete (buffer);
 		}
 	};

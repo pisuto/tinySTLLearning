@@ -305,6 +305,11 @@ namespace tinySTL {
 			return *this;
 		}
 
+		basic_string& operator+=(const basic_string& str)
+		{
+			return append(str);
+		}
+
 	public:
 
 		// 迭代器相关操作
@@ -426,10 +431,53 @@ namespace tinySTL {
 			{
 				return reallocate_and_fill(p, 1, ch);
 			}
-			char_traits::move(p + 1, r, end() - p);
+			char_traits::move(p + 1, p, end() - p);
 			++size_;
 			*p = ch;
 			return p;
+		}
+
+		iterator insert(const_iterator pos, size_type cnt, value_type ch)
+		{
+			auto p = const_cast<iterator>(pos);
+			if (cnt == 0)
+				return p;
+			if (cap_ - size_ < cnt)
+			{
+				return reallocate_and_fill(p, cnt, ch);
+			}
+			if (pos == end())
+			{
+				char_traits::move(end(), ch, cnt);
+				size_ += cnt;
+				return p;
+			}
+			char_traits::move(p + cnt, p, cnt);
+			char_traits::fill(p, ch, cnt);
+			size_ += cnt;
+			return p;
+		}
+
+		template<typename Iter>
+		iterator insert(const_iterator pos, Iter first, Iter last)
+		{
+			auto p = const_cast<iterator>(pos);
+			const size_type len = tinySTL::distance(first, last);
+			if (!len) return p;
+			if (cap_ - size_ < len)
+			{
+				return reallocate_and_copy(pos, first, last);
+			}
+			if (pos == end())
+			{
+				tinySTL::uninitialized_copy(first, last, end());
+				size_ += len;
+				return pos;
+			}
+			char_traits::move(pos + len, pos, len);
+			tinySTL::uninitialized_copy(first, last, pos);
+			size_ += len;
+			return pos;
 		}
 
 		// append 重载
@@ -497,6 +545,20 @@ namespace tinySTL {
 			return append_range(first, last);
 		}
 
+		// push_back realated
+		void push_back(value_type ch)
+		{
+			append(1, ch);
+		}
+
+		void pop_back()
+		{
+			assert(!empty());
+			// 这里并没有析构末尾元素
+			/// todo
+			--size_;
+		}
+
 		// swap
 		void swap(basic_string& rhs) noexcept
 		{
@@ -507,6 +569,126 @@ namespace tinySTL {
 				tinySTL::swap(cap_, rhs.cap_);
 			}
 		}
+
+		// 访问元素相关操作
+		reference operator[](size_type idx)
+		{
+			assert(idx <= size_);
+			if (idx == size_)
+				*(buffer_ + idx) = value_type();
+			return *(buffer_ + idx);
+		}
+
+		const_reference operator[](size_type idx) const
+		{
+			assert(idx <= size_);
+			if (idx == size_)
+				*(buffer_ + idx) = value_type();
+			return *(buffer_ + idx);
+		}
+
+		reference at(size_type idx)
+		{
+			return (*this)[idx];
+		}
+
+		const_reference at(size_type idx)
+		{
+			return (*this)[idx];
+		}
+
+		reference front()
+		{
+			assert(!empty());
+			return *begin();
+		}
+
+		const_refernece front() const
+		{
+			assert(!empty());
+			return *begin();
+		}
+
+		reference back()
+		{
+			assert(!empty());
+			return *(end() - 1);
+		}
+
+		const_reference back() const
+		{
+			assert(!empty());
+			return *(end() - 1);
+		}
+
+		const_pointer data() const noexcept
+		{
+			return to_raw_pointer();
+		}
+
+		const_pointer c_str() const noexcept
+		{
+			return to_raw_pointer();
+		}
+
+		// erase/clear
+		iterator erase(const_iterator pos)
+		{
+			assert(pos != end());
+			auto p = const_cast<iterator>(pos);
+			char_traits::move(pos, pos + 1, end() - pos - 1);
+			--size_;
+			return p;
+		}
+
+		iterator erase(const_iterator first, const_iterator last)
+		{
+			assert(first != end());
+			if (first == begin() && last == end())
+			{
+				clear();
+				return end();
+			}
+			auto p = const_cast<iterator>(first);
+			// 是否需要处理超过end()的部分
+			if (end() < last)
+			{
+				size_ -= (end() - first);
+				return p;
+			}
+			// 处理之内的部分
+			const auto n = end() - last;
+			char_traits::move(p, last, n);
+			size_ -= (last - first);
+			return p;
+		}
+
+		void clear() noexcept
+		{
+			size_ = 0;
+		}
+
+		// resize
+		void resize(size_type cnt, value_type ch)
+		{
+			if (cnt < size_)
+			{
+				erase(buffer_ + cnt, end());
+			}
+			else
+			{
+				append(cnt - size_, ch);
+			}
+		}
+
+		void resize(size_type cnt)
+		{
+			resize(cnt, value_type());
+		}
+
+		
+
+
 
 	private:
 		// helper func
@@ -680,6 +862,13 @@ namespace tinySTL {
 				size_ = 0;
 				cap_ = 0;
 			}
+		}
+
+		// to_raw_pointer
+		const_pointer to_raw_pointer()
+		{
+			*(buffer_ + size_) = value_type();
+			return buffer_;
 		}
 	};
 

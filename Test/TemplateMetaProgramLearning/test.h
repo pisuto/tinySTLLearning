@@ -1,12 +1,11 @@
 #pragma once
 
+#if 0
 #include <iostream>
 #include <vector>
 #include <algorithm>
 
 using namespace std;
-
-#include <iostream>
 
 namespace li {
     template <int n> struct int32 {
@@ -81,13 +80,4 @@ template<int ...In> static void test() {
     std::cout << "after : "; print_list(sorted());
     std::cout << '\n';
 }
-
-int main(void) {
-    test<>();
-    test<1>();
-    test<8, 1>();
-    test<1, 3, 2>();
-    test<1, 2, 5, 8, -3, 2, 100, 4, 9, 3, -8, 33, 21, 3, -4, -4, -4, -7, 2, 5, 1, 8, 2, 88, 42, 956, 21, 27, 39, 55, 1, 4, -5, -31, 9>();
-    
-    return 0;
-}
+#endif

@@ -35,6 +35,11 @@ namespace tinySTL {
 			pointer->~T(); // 执行自定义的析构函数，否则不处理
 	}
 
+	template<typename T>
+	void destroy(T* pointer) {
+		destroy_one(pointer, std::is_trivially_destructible<T>{});
+	}
+
 	template<typename ForwardIter>
 	void destroy_cat(ForwardIter, ForwardIter, std::true_type) {}
 
@@ -44,16 +49,10 @@ namespace tinySTL {
 			destroy(&*first);
 	}
 
-	template<typename T>
-	void destroy(T* pointer) {
-		destroy_one(pointer, std::is_trivially_destructible<T>{});
-	}
-
 	template<typename ForwardIter>
 	void destroy(ForwardIter first, ForwardIter last) {
 		destroy_cat(first, last, std::is_trivially_destructible<
 			typename iterator_traits<ForwardIter>::value_type>{});
 	}
-
 
 }
